@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tennis Bet Tracker Dashboard</title>
+  <style>
+    :root { --bg:#0b0f14; --panel:#111826; --muted:#9aa4b2; --text:#e5e7eb; --good:#22c55e; --bad:#ef4444; --warn:#f59e0b; --line:#223046; }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:var(--bg); color:var(--text); }
+    header{ padding:16px 14px; border-bottom:1px solid var(--line); display:flex; gap:14px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap;}
+    h1{ margin:0; font-size:18px; letter-spacing:0.2px;}
+    .sub{ color:var(--muted); font-size:12px; margin-top:4px; }
+    .wrap{ max-width:1200px; margin:0 auto; padding:14px; }
+    .grid{ display:grid; grid-template-columns: repeat(12, 1fr); gap:12px; }
+    .card{ background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px; }
+    .kpi{ grid-column: span 3; }
+    .kpi .label{ color:var(--muted); font-size:12px; }
+    .kpi .value{ font-size:20px; margin-top:6px; font-weight:700; }
+    .kpi .delta{ margin-top:6px; font-size:12px; color:var(--muted); }
+    .filters{ grid-column: span 12; display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+    .field{ display:flex; flex-direction:column; gap:6px; }
+    label{ font-size:12px; color:var(--muted); }
+    select, input{ background:#0f1623; color:var(--text); border:1px solid var(--line); border-radius:10px; padding:10px 10px; font-size:13px; min-width:160px; }
+    button{ background:#2563eb; color:white; border:0; border-radius:10px; padding:10px 12px; font-weight:700; cursor:pointer; }
+    button.secondary{ background:#0f1623; border:1px solid var(--line); color:var(--text); }
+    .charts{ grid-column: span 12; display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    canvas{ width:100%; height:200px; }
+    .tablewrap{ grid-column: span 12; overflow:auto; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; min-width:980px; }
+    thead th{ position:sticky;
+    }
+    thead th.sortable{ cursor:pointer; user-select:none; }
+    thead th.sortable:hover{ color: var(--text); }
+    thead th{ position:sticky; top:0; background:#0f1623; border-bottom:1px solid var(--line); padding:10px; font-size:12px; color:var(--muted); text-align:left; }
+    tbody td{ border-bottom:1px solid var(--line); padding:10px; font-size:13px; vertical-align:top; }
+    .pill{ display:inline-flex; gap:6px; align-items:center; padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line); background:#0f1623; color:var(--text); }
+    .pill.good{ border-color: rgba(34,197,94,.35); color: var(--good); }
+    .pill.bad{ border-color: rgba(239,68,68,.35); color: var(--bad); }
+    .pill.warn{ border-color: rgba(245,158,11,.35); color: var(--warn); }
+    .muted{ color:var(--muted); }
+    @media (max-width: 960px){
+      .kpi{ grid-column: span 6; }
+      .charts{ grid-template-columns: 1fr; }
+      select, input{ min-width: 140px; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Tennis Bet Tracker</h1>
+    <div class="sub">Single-file dashboard reading <span class="muted">bets.json</span>. Update that file to add bets.</div>
+  </div>
+  <div class="sub" id="lastUpdated"></div>
+</header>
+
+<div class="wrap">
+  <div class="grid">
+    <div class="card kpi">
+      <div class="label">Net P/L ($)</div>
+      <div class="value" id="kpiNetUsd">$0.00</div>
+      <div class="delta" id="kpiNetUsdSub"></div>
+    </div>
+    <div class="card kpi">
+      <div class="label">Net P/L (Units)</div>
+      <div class="value" id="kpiNetUnits">0.00u</div>
+      <div class="delta" id="kpiNetUnitsSub"></div>
+    </div>
+    <div class="card kpi">
+      <div class="label">Win %</div>
+      <div class="value" id="kpiWinPct">0%</div>
+      <div class="delta" id="kpiWinPctSub"></div>
+    </div>
+    <div class="card kpi">
+      <div class="label">Avg Edge (All Bets)</div>
+      <div class="value" id="kpiAvgEdge">0.0%</div>
+      <div class="delta" id="kpiAvgEdgeSub"></div>
+    </div>
+
+    <div class="card filters">
+      <div class="field">
+        <label for="fResult">Result</label>
+        <select id="fResult">
+          <option value="All">All</option>
+          <option value="Pending">Pending</option>
+          <option value="W">Win</option>
+          <option value="L">Loss</option>
+          <option value="P">Push</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="fLevel">Level</label>
+        <select id="fLevel">
+          <option value="All">All</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="fTour">Tour</label>
+        <select id="fTour">
+          <option value="All">All</option>
+          <option value="ATP">ATP</option>
+          <option value="WTA">WTA</option>
+        </select>
+      </div>
+<div class="field">
+  <label for="fSearch">Search</label>
+  <input type="text" id="fSearch" placeholder="Player, match, selection…" />
+</div>
+<div class="field">
+  <label for="fSort">Sort</label>
+  <select id="fSort">
+    <option value="tracking_asc">Tracking # (asc)</option>
+    <option value="tracking_desc">Tracking # (desc)</option>
+    <option value="date_desc" selected>Date (newest)</option>
+    <option value="date_asc">Date (oldest)</option>
+    <option value="edge_desc">Edge (high → low)</option>
+    <option value="edge_asc">Edge (low → high)</option>
+    <option value="pl_desc">P/L $ (high → low)</option>
+    <option value="pl_asc">P/L $ (low → high)</option>
+    <option value="units_desc">Units (high → low)</option>
+    <option value="units_asc">Units (low → high)</option>
+  </select>
+</div>
+      <div class="field">
+        <label for="fFrom">From (ET)</label>
+        <input type="date" id="fFrom" />
+      </div>
+      <div class="field">
+        <label for="fTo">To (ET)</label>
+        <input type="date" id="fTo" />
+      </div>
+      <div style="display:flex; gap:10px; align-items:flex-end;">
+        <button id="apply">Apply</button>
+        <button class="secondary" id="reset">Reset</button>
+      </div>
+      <div class="muted" style="margin-left:auto; font-size:12px;" id="count"></div>
+    </div>
+
+    <div class="charts">
+      <div class="card">
+        <div class="muted" style="font-size:12px; margin-bottom:10px;">Cumulative P/L (Units)</div>
+        <canvas id="chartUnits"></canvas>
+      </div>
+      <div class="card">
+        <div class="muted" style="font-size:12px; margin-bottom:10px;">Cumulative P/L ($)</div>
+        <canvas id="chartUsd"></canvas>
+      </div>
+    </div>
+
+    <div class="card tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="tracking_id">#</th>
+            <th class="sortable" data-sort="date_et">Date</th>
+            <th>Tour / Level / Surface</th>
+            <th>Match</th>
+            <th>Selection</th>
+            <th>Odds</th>
+            <th class="sortable" data-sort="units">Units</th>
+            <th>Stake</th>
+            <th>Model%</th>
+            <th>Mkt%</th>
+            <th class="sortable" data-sort="edge_pct">Edge%</th>
+            <th>Result</th>
+            <th class="sortable" data-sort="pl_usd">P/L</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  // Embedded bet log (single-file mode)
+  const RAW_DATA = {
+  "unit_value_usd": 23.0,
+  "bets": [
+    {
+      "tracking_id": 1,
+      "date_et": "2026-02-20",
+      "tour": "ATP",
+      "tournament": "Delray Beach Open",
+      "level": "ATP 250",
+      "surface": "Hard",
+      "match": "Flavio Cobolli vs Coleman Wong",
+      "selection": "Cobolli ML",
+      "odds_american": 102,
+      "units": 1.0,
+      "unit_value_usd": 23.0,
+      "stake_usd": 23.0,
+      "model_prob_pct": 62.55,
+      "true_market_prob_pct": 48.92,
+      "edge_pct": 13.63,
+      "result": "W",
+      "score_notes": "Won 2-1",
+      "pl_usd": 23.46,
+      "pl_units": 1.02
+    },
+    {
+      "tracking_id": 2,
+      "date_et": "2026-02-20",
+      "tour": "ATP",
+      "tournament": "Delray Beach Open",
+      "level": "ATP 250",
+      "surface": "Hard",
+      "match": "Casper Ruud vs Sebastian Korda",
+      "selection": "Ruud ML",
+      "odds_american": 118,
+      "units": 0.65,
+      "unit_value_usd": 23.0,
+      "stake_usd": 14.95,
+      "model_prob_pct": 56.37,
+      "true_market_prob_pct": 45.56,
+      "edge_pct": 10.81,
+      "result": "L",
+      "score_notes": "Lost 1-2",
+      "pl_usd": -15.0,
+      "pl_units": -0.6522
+    },
+    {
+      "tracking_id": 3,
+      "date_et": "2026-02-20",
+      "tour": "ATP",
+      "tournament": "Delray Beach Open",
+      "level": "ATP 250",
+      "surface": "Hard",
+      "match": "Taylor Fritz vs Tommy Paul",
+      "selection": "Fritz ML",
+      "odds_american": -125,
+      "units": 1.0,
+      "unit_value_usd": 23.0,
+      "stake_usd": 23.0,
+      "model_prob_pct": 64.35,
+      "true_market_prob_pct": 55.81,
+      "edge_pct": 8.54,
+      "result": "L",
+      "score_notes": "Lost 0-2",
+      "pl_usd": -23.0,
+      "pl_units": -1.0
+    },
+    {
+      "tracking_id": 4,
+      "date_et": "2026-02-20",
+      "tour": "ATP",
+      "tournament": "Rio Open",
+      "level": "ATP 500",
+      "surface": "Clay",
+      "match": "Alejandro Tabilo vs Thiago Tirante",
+      "selection": "Tabilo ML",
+      "odds_american": -159,
+      "units": 1.0,
+      "unit_value_usd": 23.0,
+      "stake_usd": 23.0,
+      "model_prob_pct": 67.87,
+      "true_market_prob_pct": 60.5,
+      "edge_pct": 7.37,
+      "result": "Pending",
+      "score_notes": "",
+      "pl_usd": null,
+      "pl_units": null
+    }
+  ]
+};
+
+  const fmtUsd = new Intl.NumberFormat(undefined, { style:'currency', currency:'USD' });
+  const fmtPct1 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+  const fmtPct2 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+  const fmtNum2 = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  let raw = null;
+  let chartUnits = null;
+  let chartUsd = null;
+
+  function parseDate(d){ return new Date(d + "T00:00:00"); }
+
+function sortBets(bets, sortKey){
+  const arr = [...bets];
+  const byDate = (a,b) => parseDate(a.date_et).getTime() - parseDate(b.date_et).getTime();
+  const num = (v) => (v === null || v === undefined || v === "" ? NaN : Number(v));
+  const safeNum = (v, fallback=-Infinity) => {
+    const n = num(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  switch(sortKey){
+    case "tracking_asc":  return arr.sort((a,b)=> (a.tracking_id??0)-(b.tracking_id??0));
+    case "tracking_desc": return arr.sort((a,b)=> (b.tracking_id??0)-(a.tracking_id??0));
+    case "date_asc":      return arr.sort((a,b)=> byDate(a,b) || (a.tracking_id??0)-(b.tracking_id??0));
+    case "date_desc":     return arr.sort((a,b)=> byDate(b,a) || (b.tracking_id??0)-(a.tracking_id??0));
+    case "edge_asc":      return arr.sort((a,b)=> safeNum(a.edge_pct, 1e9)-safeNum(b.edge_pct, 1e9));
+    case "edge_desc":     return arr.sort((a,b)=> safeNum(b.edge_pct, -1e9)-safeNum(a.edge_pct, -1e9));
+    case "pl_asc":        return arr.sort((a,b)=> safeNum(a.pl_usd, 1e9)-safeNum(b.pl_usd, 1e9));
+    case "pl_desc":       return arr.sort((a,b)=> safeNum(b.pl_usd, -1e9)-safeNum(a.pl_usd, -1e9));
+    case "units_asc":     return arr.sort((a,b)=> safeNum(a.units, 1e9)-safeNum(b.units, 1e9));
+    case "units_desc":    return arr.sort((a,b)=> safeNum(b.units, -1e9)-safeNum(a.units, -1e9));
+    default:              return arr.sort((a,b)=> byDate(b,a) || (b.tracking_id??0)-(a.tracking_id??0));
+  }
+}
+
+
+  function pill(result){
+    if(result === "W") return `<span class="pill good">W</span>`;
+    if(result === "L") return `<span class="pill bad">L</span>`;
+    if(result === "P") return `<span class="pill warn">P</span>`;
+    return `<span class="pill">Pending</span>`;
+  }
+
+  function load(){
+    try{
+      raw = RAW_DATA;
+      document.getElementById("lastUpdated").textContent = "Loaded " + new Date().toLocaleString();
+      hydrateLevelFilter(raw.bets);
+      apply();
+    }catch(err){
+      document.getElementById("lastUpdated").textContent = "Error loading embedded data: " + err;
+    }
+  }
+
+  function hydrateLevelFilter(bets){
+    const levels = Array.from(new Set(bets.map(b => b.level).filter(Boolean))).sort();
+    const sel = document.getElementById("fLevel");
+    // clear extras
+    sel.innerHTML = `<option value="All">All</option>`;
+    for(const lvl of levels){
+      const opt = document.createElement("option");
+      opt.value = lvl;
+      opt.textContent = lvl;
+      sel.appendChild(opt);
+    }
+  }
+
+  function getFilters(){
+  return {
+    result: document.getElementById("fResult").value,
+    level: document.getElementById("fLevel").value,
+    tour: document.getElementById("fTour").value,
+    from: document.getElementById("fFrom").value ? parseDate(document.getElementById("fFrom").value) : null,
+    to: document.getElementById("fTo").value ? parseDate(document.getElementById("fTo").value) : null,
+    search: (document.getElementById("fSearch")?.value || ""),
+    sort: (document.getElementById("fSort")?.value || "date_desc"),
+  };
+}
+
+  function filterBets(bets, f){
+  const q = (f.search || "").trim().toLowerCase();
+  const filtered = bets.filter(b => {
+    if(f.result !== "All" && b.result !== f.result) return false;
+    if(f.level !== "All" && b.level !== f.level) return false;
+    if(f.tour !== "All" && b.tour !== f.tour) return false;
+    const d = parseDate(b.date_et);
+    if(f.from && d < f.from) return false;
+    if(f.to && d > f.to) return false;
+
+    if(q){
+      const hay = [b.match, b.selection, b.tournament, b.level, b.surface, b.tour].filter(Boolean).join(" ").toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  return sortBets(filtered, f.sort);
+}
+
+  function computeKPIs(bets){
+    const graded = bets.filter(b => b.result === "W" || b.result === "L" || b.result === "P");
+    const wins = graded.filter(b => b.result === "W").length;
+    const losses = graded.filter(b => b.result === "L").length;
+    const pushes = graded.filter(b => b.result === "P").length;
+
+    const netUsd = graded.reduce((s,b) => s + (Number(b.pl_usd) || 0), 0);
+    const netUnits = graded.reduce((s,b) => s + (Number(b.pl_units) || 0), 0);
+    const totalEdge = bets.reduce((s,b) => s + (Number(b.edge_pct) || 0), 0);
+    const avgEdge = bets.length ? totalEdge / bets.length : 0;
+
+    const winPct = (wins + losses) ? (wins / (wins + losses)) * 100 : 0;
+
+    document.getElementById("kpiNetUsd").textContent = fmtUsd.format(netUsd);
+    document.getElementById("kpiNetUsdSub").textContent = graded.length ? `Across ${graded.length} graded bet(s)` : "No graded bets yet";
+    document.getElementById("kpiNetUnits").textContent = `${fmtNum2.format(netUnits)}u`;
+    document.getElementById("kpiNetUnitsSub").textContent = `Wins ${wins} • Losses ${losses} • Pushes ${pushes}`;
+    document.getElementById("kpiWinPct").textContent = `${fmtPct1.format(winPct)}%`;
+    document.getElementById("kpiWinPctSub").textContent = (wins+losses) ? `(${wins}-${losses})` : "No decisions yet";
+    document.getElementById("kpiAvgEdge").textContent = `${fmtPct1.format(avgEdge)}%`;
+    document.getElementById("kpiAvgEdgeSub").textContent = `Across ${bets.length} bet(s) (incl. pending)`;
+  }
+
+  function renderTable(bets){
+    const tb = document.getElementById("tbody");
+    tb.innerHTML = "";
+    for(const b of bets){
+      const pl = (b.pl_usd === null || b.pl_usd === undefined) ? "" : `${fmtUsd.format(b.pl_usd)} (${fmtNum2.format(b.pl_units)}u)`;
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${b.tracking_id ?? ""}</td>
+        <td>${b.date_et ?? ""}</td>
+        <td><div>${b.tour ?? ""} <span class="muted">•</span> ${b.level ?? ""}</div><div class="muted">${b.surface ?? ""}</div></td>
+        <td><div>${b.match ?? ""}</div><div class="muted">${b.tournament ?? ""}</div></td>
+        <td>${b.selection ?? ""}</td>
+        <td>${(b.odds_american>0?'+':'') + b.odds_american}</td>
+        <td>${b.units ?? ""}</td>
+        <td>${fmtUsd.format(Number(b.stake_usd) || 0)}</td>
+        <td>${fmtPct2.format(Number(b.model_prob_pct) || 0)}%</td>
+        <td>${b.true_market_prob_pct === null || b.true_market_prob_pct === undefined || b.true_market_prob_pct === "" ? "" : (fmtPct2.format(Number(b.true_market_prob_pct)) + '%')}</td>
+        <td>${fmtPct2.format(Number(b.edge_pct) || 0)}%</td>
+        <td>${pill(b.result)}</td>
+        <td>${pl}<div class="muted">${b.score_notes ?? ""}</div></td>
+      `;
+      tb.appendChild(row);
+    }
+  }
+
+  function renderCharts(bets){
+  const byDate = new Map(); // date -> {u, usd}
+  const sorted = [...bets].sort((a,b)=> parseDate(a.date_et)-parseDate(b.date_et) || (a.tracking_id??0)-(b.tracking_id??0));
+  for(const b of sorted){
+    const graded = (b.result === "W" || b.result === "L" || b.result === "P");
+    if(!graded) continue;
+    const key = b.date_et;
+    if(!byDate.has(key)) byDate.set(key, {u:0, usd:0});
+    const v = byDate.get(key);
+    v.u += (Number(b.pl_units) || 0);
+    v.usd += (Number(b.pl_usd) || 0);
+  }
+
+  const dates = Array.from(byDate.keys()).sort((a,b)=> parseDate(a)-parseDate(b));
+  const labels = dates.length ? dates : [""];
+  let cumU = 0, cum$ = 0;
+  const seriesU = [];
+  const series$ = [];
+
+  if(dates.length){
+    for(const d of dates){
+      const v = byDate.get(d);
+      cumU += v.u;
+      cum$ += v.usd;
+      seriesU.push(Number(cumU.toFixed(4)));
+      series$.push(Number(cum$.toFixed(2)));
+    }
+  }else{
+    seriesU.push(0);
+    series$.push(0);
+  }
+
+  const ctxU = document.getElementById("chartUnits");
+  const ctx$ = document.getElementById("chartUsd");
+
+  const common = {
+    type: 'line',
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display:false }, tooltip: { intersect:false, mode:'index' } },
+      elements: { point: { radius: 0, hoverRadius: 3 }, line: { tension: 0.25 } },
+      scales: {
+        x: { grid: { color: 'rgba(34,48,70,.25)' }, ticks: { color: '#9aa4b2' } },
+        y: { grid: { color: 'rgba(34,48,70,.25)' }, ticks: { color: '#9aa4b2' } }
+      }
+    }
+  };
+
+  if(chartUnits) chartUnits.destroy();
+  if(chartUsd) chartUsd.destroy();
+
+  chartUnits = new Chart(ctxU, { ...common, data: { labels, datasets: [{ label:'Units', data: seriesU }] } });
+  chartUsd   = new Chart(ctx$, { ...common, data: { labels, datasets: [{ label:'USD', data: series$ }] } });
+}
+      seriesU.push(Number(cumU.toFixed(4)));
+      series$.push(Number(cum$.toFixed(2)));
+    }
+
+    const ctxU = document.getElementById("chartUnits");
+    const ctx$ = document.getElementById("chartUsd");
+
+    const common = {
+      type: 'line',
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display:false } },
+        scales: {
+          x: { grid: { color: 'rgba(34,48,70,.35)' }, ticks: { color: '#9aa4b2' } },
+          y: { grid: { color: 'rgba(34,48,70,.35)' }, ticks: { color: '#9aa4b2' } }
+        }
+      }
+    };
+
+    if(chartUnits) chartUnits.destroy();
+    if(chartUsd) chartUsd.destroy();
+
+    chartUnits = new Chart(ctxU, {
+      ...common,
+      data: { labels, datasets: [{ label:'Units', data: seriesU }] }
+    });
+
+    chartUsd = new Chart(ctx$, {
+      ...common,
+      data: { labels, datasets: [{ label:'USD', data: series$ }] }
+    });
+  }
+
+  function apply(){
+    if(!raw) return;
+    const f = getFilters();
+    const bets = filterBets(raw.bets, f);
+    document.getElementById("count").textContent = `${bets.length} bet(s) shown`;
+    computeKPIs(bets);
+    renderTable(bets);
+    renderCharts(bets);
+  }
+
+  function reset(){
+    document.getElementById("fResult").value = "All";
+    document.getElementById("fLevel").value = "All";
+    document.getElementById("fTour").value = "All";
+    document.getElementById("fFrom").value = "";
+    document.getElementById("fTo").value = "";
+    apply();
+  }
+
+  function initHeaderSorting(){
+  const ths = document.querySelectorAll("thead th.sortable");
+  ths.forEach(th => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.sort;
+      const sel = document.getElementById("fSort");
+      if(!sel) return;
+
+      const current = sel.value;
+      const map = {
+        "tracking_id": ["tracking_asc","tracking_desc"],
+        "date_et": ["date_asc","date_desc"],
+        "edge_pct": ["edge_asc","edge_desc"],
+        "pl_usd": ["pl_asc","pl_desc"],
+        "units": ["units_asc","units_desc"]
+      };
+
+      if(map[key]){
+        const [asc, desc] = map[key];
+        let next = desc;
+        if(current === desc) next = asc;
+        else if(current === asc) next = desc;
+        sel.value = next;
+        apply();
+      }
+    });
+  });
+}
+
+  document.getElementById("apply").addEventListener("click", apply);
+  document.getElementById("reset").addEventListener("click", reset);
+
+  const s = document.getElementById("fSearch");
+  if(s){
+    s.addEventListener("keydown", (e)=>{ if(e.key === "Enter") apply(); });
+    s.addEventListener("input", ()=>{ apply(); });
+  }
+  const so = document.getElementById("fSort");
+  if(so){ so.addEventListener("change", apply); }
+
+
+  load();
+  initHeaderSorting();
+</script>
+</body>
+</html>
